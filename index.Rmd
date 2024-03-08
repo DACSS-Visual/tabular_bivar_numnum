@@ -331,7 +331,7 @@ Check the order of our stats:
 ```{r, warning=FALSE, message=FALSE}
 table(summaryBy_long$stats)
 ```
-Maybe, you want a different order (in affects the plots):
+Maybe, you want a different order (it affects the plots):
 
 ```{r, warning=FALSE, message=FALSE}
 summaryBy_long$stats=factor(summaryBy_long$stats,

@@ -26,47 +26,43 @@ _____
 klippy::klippy(position = c('top', 'right'))
 ```
 
-Let's keep using the same data on crimes in Seattle:
+
+```{r, eval=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+rm(list = ls())
+covidMA=rio::import("data/covid-19-raw-data-12-31-2021-0.xlsx",which = "County_Daily")
+covidMA=covidMA[,c(1,2,3,5)]
+names(covidMA)[c(3,4)]=c("cases","deaths")
+covidMA[is.na(covidMA)] <- 0
+covidMA$yearMonth=floor_date(covidMA$Date, "month")
+covidMA$yearMonth_text=format(covidMA$Date, "%Y-%b")
+
+covidMA$yearMonth_text=factor(covidMA$yearMonth_text,
+       levels = unique(covidMA$yearMonth_text),ordered = T)
+
+covidMA=covidMA[covidMA$County!="Unknown",]
+covidMA=covidMA[covidMA$cases>=0,]
+covidMA=covidMA[covidMA$deaths>=0,]
+saveRDS(object = covidMA,file = "data/covidMA.rds")
+```
+
+
+
+Let's  use these [Covid data set](https://www.mass.gov/info-details/archive-of-covid-19-cases-2020-2021) from Massachusetts (previously pre-processed for this session):
 
 ```{r collect, eval=TRUE, warning=FALSE, message=FALSE}
 rm(list = ls())
 
 # collecting the data
-link="https://github.com/DACSS-Visual/tabular_bivar_catcat/raw/main/data/crime.RData"
-load(file = url(link))
+link="https://github.com/DACSS-Visual/tabular_bivar_numnum/raw/main/data/covidMA.rds"
+covidMA=readRDS(url(link))
 ```
 
-...and review the data:
+This is what we have:
 
 ```{r, eval=TRUE, warning=FALSE, message=FALSE}
-str(crime,width = 70,strict.width='cut')
+str(covidMA)
+
 ```
-
-Let's keep some columns:
-
-* "Occurred.Date"              
-* "year"
-* "month"                      
-* "weekday" 
-* "Reported.Date"              
-* "DaysToReport"               
-* "crimecat"                    
-* "Neighborhood"   
-
-
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-# just keeping the above variables:
-varsProject=c("Occurred.Date","year", "month", "weekday", "Reported.Date" , "DaysToReport","crimecat","Neighborhood")
-crime=crime[,varsProject]
-crime=crime[complete.cases(crime),] # just complete data
-row.names(crime)=NULL
-```
-
-
-[Go to table of contents.](#TOC)
-
-________
-
 
 <a id='part1'></a>
 
@@ -75,169 +71,117 @@ ________
 I have a date variable in this data set:
 
 ```{r, eval=TRUE, warning=FALSE, message=FALSE}
-summary(crime$Occurred.Date)
+summary(covidMA$Date)
 ```
 
-Let me get a frequency table of the _year_ column:
+Let me see the monthly situation:
 
 ```{r, warning=FALSE, message=FALSE}
-table(crime$year)
-```
-Let me filter reports, so to keep the last ten years available:
+library(lubridate)
 
-```{r, warning=FALSE, message=FALSE}
-subCrime=crime[crime$year>2008,]
-```
+covidMA_monthly=aggregate(data=covidMA,
+          cbind(cases,deaths)~yearMonth,sum)
 
-It is pretty common the use of lines instead of bars when the x-axis is time. Let me prepare the frequency table:
-
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-crimeDate=as.data.frame(table(subCrime$Occurred.Date))  
-head(crimeDate,10) # date will turn into  a factor
+covidMA_monthly$yearMonth=as.Date(covidMA_monthly$yearMonth)
+covidMA_monthly
 ```
 
-Let's make sure that dates are recognised as such:
+As we know, long shape works better:
 
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-names(crimeDate)=c("date",'count') # renaming
-#formatting column in Freq Table:
-crimeDate$date=as.Date(crimeDate$date)
+```{r}
 
+covidMA_monthly_long=reshape2::melt(covidMA_monthly,variable.name = 'type',
+                              value.name = 'value',
+                              id.vars='yearMonth')
+covidMA_monthly_long
 ```
 
-So now you have:
-
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-head(crimeDate)
-```
 
 Let's get our lines:
 
 ```{r, eval=TRUE, warning=FALSE, message=FALSE}
+# want to subset?
+min <- as.Date("2020-08-01")
+max <- as.Date("2021-12-01")
+
+
+
 library(ggplot2)
-base=ggplot(crimeDate,
-            aes(x=date,y=count))
-base  + geom_line(alpha=0.3) 
+base=ggplot(covidMA_monthly_long,
+            aes(x=yearMonth)) + theme_light()
+
+covidLines=base  + geom_line(aes(y=value,color=type) )
+
+covidLines= covidLines + scale_x_date(limits = c(min, max), #subset?
+                                      date_breaks = "1 month",
+                                      date_labels = "%b-%Y") + 
+    theme(axis.text.x = element_text(angle = 90))
+
+covidLines 
 ```
 
-You can subset inside ggplot2:
+Alternatively:
 
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-min <- as.Date("2010-1-1")
-max <- as.Date("2018-12-31")
-base=ggplot(crimeDate,
-            aes(x=date,y=count))
-linePlot=base  + geom_line(alpha=0.3) 
-linePlot + scale_x_date(limits = c(min, max)) 
+```{r}
+covidLines  + scale_y_log10(labels = scales::comma)
 ```
 
-Counting per month:
+
+What about faceting by county? 
+
+Let's prepare the data:
+
+```{r}
+covidMA_County_monthly=aggregate(data=covidMA,
+          cbind(cases,deaths)~yearMonth+ County,sum)
+
+
+covidMA_County_monthly_long=reshape2::melt(covidMA_County_monthly,
+                                    variable.name = 'type',
+                              value.name = 'value',
+                              id.vars=c('yearMonth','County'))
+
+head(covidMA_County_monthly_long,20)
+```
+
+
+First plot (only deaths):
 
 ```{r, eval=TRUE, warning=FALSE, message=FALSE}
-library(lubridate)
-base=ggplot(crimeDate,
-            aes(x=floor_date(date, "month"),
-                y=count))
-monthly= base  + geom_line(alpha=0.3) 
-monthly= monthly + scale_x_date(limits = c(min, max))
+
+base=ggplot(covidMA_County_monthly_long[covidMA_County_monthly_long$type=='deaths',],
+            aes(x=yearMonth,
+                y=value)) + theme_light()
+monthly= base  + geom_line(alpha=0.3)  + 
+    theme(axis.text.x = element_text(angle = 90))
 
 # adding a trend:
 monthly = monthly + stat_smooth(color = "red",
                       fill = "yellow",
                       method = "loess")
-monthly
+monthly + facet_wrap(~County)
 ```
 
-What about faceting by crime? However, our crimeDate data frame does not have that information. Let's redo it:
+Reordering grid:
 
 ```{r, eval=TRUE, warning=FALSE, message=FALSE}
-crimeDate2=as.data.frame(table(subCrime$Occurred.Date,subCrime$crimecat))  # date will be a factor
-head(crimeDate2,10)
+monthly + facet_wrap(~reorder(County,-value)) + scale_y_log10(labels = scales::comma)
 ```
 
-Let's reformat _crimeDate2_:
+We just reorganized the previous plot so that we highlight the most and least affected counties.
 
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-names(crimeDate2)=c("date","crime",'count')
-#formatting column in Freq Table:
-crimeDate2$date=as.Date(crimeDate2$date)
-
-```
+So far, lines have been used to report counts. We can also analyze the distribution of the counts using density plots. I mean:
 
 
 ```{r, eval=TRUE, warning=FALSE, message=FALSE}
-
-base=ggplot(crimeDate2,
-            aes(x=floor_date(date, "month"),
-                y=count))
-monthly= base  + geom_line(alpha=0.3) 
-monthly= monthly + scale_x_date(limits = c(min, max))
-
-# adding a trend:
-monthly = monthly + stat_smooth(color = "red",
-                      fill = "yellow",
-                      method = "loess")
-monthly + facet_wrap(~crime)
-```
-
-Alternatively,
-
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-monthly + facet_wrap(~reorder(crime,-count))
-```
-
-We just reorganized the previous plot so that we highlight the most and least common crimes along that time period.
-
-So far, lines have been used to report counts of the crimes. We can also analyze the distribution of the counts using histograms. I mean:
-
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-
-crimeTotalCountsDay=as.data.frame(table(subCrime$Occurred.Date))
-crimeTotalCountsDay$Var1=as.Date(crimeTotalCountsDay$Var1)
-names(crimeTotalCountsDay)=c('date','counts')
-ggplot(data=crimeTotalCountsDay, aes(x=counts)) + geom_histogram() + xlab("crime per day")
-```
-
-The plot above shows a distribution of crimes per day from 2009 to 2018. Check this summary:
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-summary(crimeTotalCountsDay$counts)
-```
-This is telling that you the worst and best day of crimes happening:
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-# checking the original data:
-sort(table(subCrime$Occurred.Date),decreasing = T)[c(1,length(crimeTotalCountsDay$counts))]
-```
-
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-# checking the  data frame:
-crimeTotalCountsDay[which.max(crimeTotalCountsDay$counts),]
-```
-
-Let's see a distribution per year:
-
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-tapply(crimeTotalCountsDay$counts,
-       year(crimeTotalCountsDay$date), FUN=summary)
-```
-
-If you need to plot this information, we need to add the column with year to the frequency table *crimeTotalCountsDay*:
-
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-crimeTotalCountsDay$year=year(crimeTotalCountsDay$date)
-#you have
-head(crimeTotalCountsDay,15)
-```
-
-Now, you can plot by year:
-
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-base = ggplot(crimeTotalCountsDay,
-       aes(x = counts)) + theme_classic()
+base = ggplot(covidMA,
+       aes(x = cases)) + theme_classic()
 densePlot=base + geom_density(fill='grey', color=NA) 
-densePlot=densePlot+ facet_wrap(~year,
+densePlot=densePlot+ facet_wrap(~yearMonth_text,
                                 ncol = 1, #all in one column
                                 strip.position = 'right')#,#year
-densePlot 
+densePlot=densePlot + scale_x_log10()
+densePlot
 
 ```
 
@@ -263,109 +207,71 @@ densePlot +
                                     angle = 0))
 ```
 
-We can also use similar plots to the ones used in the previous material (cat-num). Let's keep duration longer than a year starting year 2000:
-
-```{r filterexploreBOX2, eval=TRUE, warning=FALSE, message=FALSE}
-# new filtered data frame
-crimeY2000=crime[crime$year>=2000 & crime$DaysToReport>=365,]
-
-# create new variable in YEARS:
-crimeY2000$YearsToReport=crimeY2000$DaysToReport/365
-```
+We can also use similar plots to the ones used in the previous material (cat-num), trying to represent basic stats:
 
 
-Let's make boxplots:
-
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-#boxplot by Year
-base=ggplot(data = crimeY2000,
-            aes(x=as.factor(year),
-                y=YearsToReport)) 
-boxByYear=base + geom_boxplot()
-
-boxByYear
-```
-
-
-Remember that although the boxplot is very informative, we should try more familiar plots. Let's highlight the min, max and median values. Let me aggregate my data:
 
 ```{r, warning=FALSE, message=FALSE}
-summaryBy=aggregate(data=crimeY2000,
-                    YearsToReport~year,
-                    FUN = function(x) c(median = median(x),
-                                        min = min(x),
+summaryBy=aggregate(data=covidMA,
+                    cases~yearMonth_text,
+                    FUN = function(x) c(median = round(median(x),0),
                                         max=max(x)) )
 #when several functions at play
+
 summaryBy=do.call(data.frame,summaryBy)
-summaryBy
-```
+names(summaryBy)=c('yearMonth_text','median','max')
 
-Let's change the default names: 
-
-```{r, warning=FALSE, message=FALSE}
-names(summaryBy)=c('year','median','min','max')
-```
-
-Now, let's use that data to plot:
-
-```{r, warning=FALSE, message=FALSE}
-base = ggplot(data=summaryBy, aes(x=year))
-base + geom_point(aes(y=median),color='blue') +
-       geom_point(aes(y=min),color='green') +
-       geom_point(aes(y=max),color='red')
-    
-
-```
-
-The _summaryBy_ dataframe is in _wide_ format. It may be more efficient to transform it into a _long_ format:
-
-```{r, warning=FALSE, message=FALSE}
 summaryBy_long=reshape2::melt(summaryBy,variable.name = 'stats',
-                              value.name = 'yearsToReport',
-                              id.vars='year')
+                              value.name = 'values',
+                              id.vars='yearMonth_text')
 summaryBy_long
 ```
 
-Check the order of our stats:
-
-```{r, warning=FALSE, message=FALSE}
-table(summaryBy_long$stats)
-```
-Maybe, you want a different order (it affects the plots):
-
-```{r, warning=FALSE, message=FALSE}
-summaryBy_long$stats=factor(summaryBy_long$stats,
-                            levels = c('min','median','max'))
-table(summaryBy_long$stats)
-```
 
 We are ready to plot:
 
 ```{r, warning=FALSE, message=FALSE}
-base=ggplot(data=summaryBy_long, aes(x=year)) + theme_classic()
-base + geom_point(aes(y=yearsToReport, color=stats))
+textDates=levels(summaryBy_long$yearMonth_text)
+
+base=ggplot(data=summaryBy_long, aes(x=yearMonth_text)) # this is categorical
+
+custom=base + geom_line(aes(x=as.numeric(yearMonth_text),# for position
+                            y=values ,
+                            color=stats),
+                        linetype='dashed')
+
+custom= custom + scale_x_discrete(labels = textDates) +
+        theme(axis.text.x = element_text(angle = 90))
+
+custom=custom + geom_text(aes(label=values, y=values),
+                          angle=30,
+                          nudge_y = 0.1,
+                          facetype='bold',size=3) 
+custom = custom + scale_y_log10()
+
+custom
 ```
+```{r, fig.width=8, fig.height=8}
+# texts for labs
+titleText="Covid deaths in MA Commonwealth"
+sub_titleText="Median and Max for monthly deaths (2020-2021)"
+captionText="Source: MA - Covid19 Dashboard \nWebsite:https://www.mass.gov/info-details/covid-19-reporting"
+yText="Deaths (Logged values)"
+xText=""
+colorLegendText=""
 
+#####
 
-What about bars?
-
-```{r, warning=FALSE, message=FALSE}
-bars=base + geom_bar(aes(y=yearsToReport,fill=stats),stat = 'identity')
-bars
-```
-
-Maybe facetted bars instead?
-
-```{r, warning=FALSE, message=FALSE}
-
-bars + facet_grid(stats~.) 
-```
-
-
-Or simply...
-
-```{r, warning=FALSE, message=FALSE}
-base + geom_line(aes(y=yearsToReport, color=stats))
+custom + labs(title = titleText,
+         subtitle = sub_titleText,
+         caption = captionText,
+         y=yText,
+         x=xText,
+         color=colorLegendText) +
+    
+    theme(plot.caption = element_text(hjust = 0), # caption to the right
+          axis.text.y = element_blank(),
+          axis.ticks.y = element_blank())
 ```
 
 
@@ -379,108 +285,104 @@ ________
 
 ## Numeric-Numeric data
 
-The study of bivariate relationships among numerical variables is known as correlation analysis. The data we have been using has few numerical columns, but I will produce two by aggregating the original data since 2015 by _Neigborhood_:
+The study of bivariate relationships among numerical variables is known as correlation analysis. The data we have been using has few numerical columns, but I will produce two by aggregating the original data by county:
 
 * Aggregating days to report and neighborhood:
 ```{r aggregate, eval=TRUE, warning=FALSE, message=FALSE}
-crime2015=crime[crime$year>=2015,]
-# 1. MEAN of days it takes to report a crime by neighborhood
-daysByNeigh=aggregate(data=crime2015,DaysToReport~Neighborhood,mean)
+covidMA_county=aggregate(data=covidMA,cbind(deaths,cases)~County,sum)
 
 # you have:
-head(daysByNeigh)
+head(covidMA_county)
 ```
 
-* Aggregating crimes by neighborhood
-
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-# 2. Crimes by neighborhood
-crimesByNeigh=as.data.frame(100*prop.table(table(crime2015$Neighborhood)))
-names(crimesByNeigh)=c('Neighborhood', 'CrimeShare')
-head(crimesByNeigh)
-```
-
-
-Since both data frames have the same neighboorhood, we can make one data frame by merging them:
-
-```{r mergeDFS, eval=TRUE, warning=FALSE, message=FALSE}
-num_num=merge(daysByNeigh,crimesByNeigh) # 'Neighborhood' is the "key"
-#check after merge:
-str(num_num)
-```
-Let's turn the _Neighborhood_ into characters:
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-num_num$Neighborhood=as.character(num_num$Neighborhood)
-```
 
 
 Once we have the data organized, the clear option is the scatterplot:
 
 ```{r scatter, eval=TRUE, warning=FALSE, message=FALSE}
  
-base = ggplot(num_num, aes(x=DaysToReport,y=CrimeShare)) 
-plot1= base +  geom_point() 
-plot1
+base = ggplot(covidMA_county, aes(x=deaths,y=cases)) 
+scat1= base +  geom_point() 
+scat1
+
 ```
 
-If you compute the Pearson correlation coefficient, you may not find a relevant correlation interesting:
+If you compute the Pearson correlation coefficient, you may find a relevant correlation level:
+
 ```{r, eval=TRUE, warning=FALSE, message=FALSE}
-cor.test(num_num$DaysToReport,num_num$CrimeShare,method = "pearson")
+cor.test(covidMA_county$deaths,covidMA_county$cases,method = "pearson")
 ```
 
-However, you can visually find something relevant. Let's use **ggrepel** to show labels:
+Let's use **ggrepel** to show county names:
 
 ```{r ggscatter, eval=TRUE, warning=FALSE, message=FALSE}
 library(ggrepel)
-plot1 + geom_text_repel(aes(label=Neighborhood),size=2)
-```
-
-Now we can limit the labels, annotating the ones that represent at least 5% of the crimes in the city:
-
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-plot1 + geom_text_repel(aes(label=ifelse(CrimeShare>=5,Neighborhood, "")))
-```
-
-Or the ones that take longer than a week to report:
-
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-plot1 + geom_text_repel(aes(label=ifelse(DaysToReport>7,Neighborhood, "")))
+scat1=scat1 + geom_text_repel(aes(label=County),size=2)
+scat1
 ```
 
 
-Let's identify the area of the most salient behavior. Let's highlight overlaping points:
+Let's highlight clustering around some values:
 
 ```{r hexbins, eval=TRUE, warning=FALSE, message=FALSE}
-scatp1 = base +  geom_hex(bins = 10)
-scatp1 + scale_fill_distiller(palette ="Greys",direction=1) # try -1
+scatp2 = base +  geom_hex(bins = 10)
+
+scatp2 = scatp2 + scale_fill_distiller(palette ="Greys",direction=1)
+
+scatp2 + geom_text_repel(aes(label=County))
 ```
 
-The palettes can be selected from the [brewer colors website](http://colorbrewer2.org). Using the same palette as before, we can try a different plot (stat_density_2d):
+Palettes can be selected from the [brewer colors website](http://colorbrewer2.org). Using the same palette as before, we can try a different plot (stat_density_2d):
 
 ```{r density,eval=TRUE, warning=FALSE, message=FALSE}
-base = ggplot(num_num, aes(x=DaysToReport,y=CrimeShare)) 
-scatp1 = base +  stat_density_2d(aes(fill = ..density..), 
-                                 geom = "raster", contour = FALSE)
+base = ggplot(covidMA_county, aes(x=deaths,y=cases)) 
 
-scatp2 = scatp1 +  theme(legend.position='none') 
-scatp3= scatp2 + scale_fill_distiller(palette="Greys", direction=1) 
+scatp3 = base +  stat_density_2d(aes(fill = ..density..), 
+                                 geom = "raster", contour = FALSE,show.legend = F)
+
+scatp3= scatp3 + scale_fill_distiller(palette="Greys", direction=1) 
 scatp3 
 ```
 
-The extra space you see can dissappear using:
+Let's add text and make the unneeded space dissappear:
 
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-scatp4 = scatp3 +  scale_x_continuous(breaks = c(1:20),expand = c(0, 0)) + 
-         scale_y_continuous(breaks = c(1:10),expand = c(0, 0)) 
-scatp4
+```{r}
+scatp3 = scatp3 + geom_text_repel(aes(label=County),color='yellow',facetype='bold') + 
+    scale_y_continuous(expand = c(0, 0)) + 
+    scale_x_continuous(expand = c(0, 0)) 
+scatp3
 ```
 
-Now you have an approximate of the places representing the most common behavior:
 
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-base = ggplot(num_num, aes(x=DaysToReport,y=CrimeShare)) 
-plot1= base +  geom_point() + xlim(c(2,5))+ ylim(c(0,3))
-plot1 + geom_text_repel(aes(label=Neighborhood),size=2)
+Finishing...
+```{r, eval=TRUE, warning=FALSE, message=FALSE, fig.width=8, fig.height=8}
+
+# texts for labs
+titleText="Covid severity in MA Counties"
+sub_titleText="Cases and deaths from 2020 to 2021"
+captionText="Source: MA - Covid19 Dashboard \nWebsite:https://www.mass.gov/info-details/covid-19-reporting"
+yText="Infected"
+xText="Deaths"
+colorLegendText=""
+
+#####
+
+scatp3 + labs(title = titleText,
+         subtitle = sub_titleText,
+         caption = captionText,
+         y=yText,
+         x=xText,
+         color=colorLegendText) +
+    
+    theme(plot.caption = element_text(hjust = 0)) + 
+    
+    annotate("segment", x = 100, y = 100000, xend = 600, yend = 150000, 
+         size = 4, linejoin = "mitre",
+         arrow = arrow(type = "closed", length = unit(0.001, "cm"))) +
+annotate("text", x=300,y=130000, label = "more severe situation", color = "red", 
+         angle = 45, hjust = 0.6, size = 4, fontface = "bold") 
+
+
 ```
 
 

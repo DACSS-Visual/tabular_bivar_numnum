@@ -77,7 +77,7 @@ summary(covidMA$Date)
 Let me see the monthly situation:
 
 ```{r, warning=FALSE, message=FALSE}
-library(lubridate)
+
 
 covidMA_monthly=aggregate(data=covidMA,
           cbind(cases,deaths)~yearMonth,sum)
@@ -251,6 +251,9 @@ custom = custom + scale_y_log10()
 
 custom
 ```
+
+Finishing...
+
 ```{r, fig.width=8, fig.height=8}
 # texts for labs
 titleText="Covid deaths in MA Commonwealth"
@@ -332,7 +335,7 @@ scatp2 = scatp2 + scale_fill_distiller(palette ="Greys",direction=1)
 scatp2 + geom_text_repel(aes(label=County))
 ```
 
-Palettes can be selected from the [brewer colors website](http://colorbrewer2.org). Using the same palette as before, we can try a different plot (stat_density_2d):
+Using the same palette as before, we can try a different plot (stat_density_2d):
 
 ```{r density,eval=TRUE, warning=FALSE, message=FALSE}
 base = ggplot(covidMA_county, aes(x=deaths,y=cases)) 
@@ -347,7 +350,7 @@ scatp3
 Let's add text and make the unneeded space dissappear:
 
 ```{r}
-scatp3 = scatp3 + geom_text_repel(aes(label=County),color='yellow',facetype='bold') + 
+scatp3 = scatp3 + geom_text_repel(aes(label=County),color='white',fontface='bold',bg.color = "black",bg.r = .15) + 
     scale_y_continuous(expand = c(0, 0)) + 
     scale_x_continuous(expand = c(0, 0)) 
 scatp3
@@ -372,13 +375,8 @@ scatp3 + labs(title = titleText,
          caption = captionText,
          y=yText,
          x=xText,
-         color=colorLegendText) +
-    
-    theme(plot.caption = element_text(hjust = 0)) + 
-    
-    annotate("segment", x = 100, y = 100000, xend = 600, yend = 150000, 
-         size = 4, linejoin = "mitre",
-         arrow = arrow(type = "closed", length = unit(0.001, "cm"))) +
+         color=colorLegendText) + theme(plot.caption = element_text(hjust = 0)) + geom_segment(aes(x = 100, y = 100000, xend = 600, yend = 150000), arrow = arrow(type = 'closed'),size=2) +
+
 annotate("text", x=300,y=130000, label = "more severe situation", color = "red", 
          angle = 45, hjust = 0.6, size = 4, fontface = "bold") 
 

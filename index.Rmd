@@ -15,7 +15,7 @@ _____
 
 2. [Two numeric variables](#part2)
 
-3. [LAB (next meeting).](#part3) 
+3. [Deliverable II (option 3)](#part3) 
 
 
 
@@ -29,6 +29,7 @@ klippy::klippy(position = c('top', 'right'))
 
 ```{r, eval=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
 rm(list = ls())
+library(lubridate)
 covidMA=rio::import("data/covid-19-raw-data-12-31-2021-0.xlsx",which = "County_Daily")
 covidMA=covidMA[,c(1,2,3,5)]
 names(covidMA)[c(3,4)]=c("cases","deaths")
@@ -90,9 +91,10 @@ As we know, long shape works better:
 
 ```{r}
 
-covidMA_monthly_long=reshape2::melt(covidMA_monthly,variable.name = 'type',
-                              value.name = 'value',
-                              id.vars='yearMonth')
+covidMA_monthly_long=reshape2::melt(covidMA_monthly,
+                                    variable.name = 'type',
+                                    value.name = 'value',
+                                    id.vars='yearMonth')
 covidMA_monthly_long
 ```
 
@@ -127,7 +129,7 @@ covidLines  + scale_y_log10(labels = scales::comma)
 ```
 
 
-What about faceting by county? 
+What about faceting deaths by county? 
 
 Let's prepare the data:
 
@@ -136,22 +138,17 @@ covidMA_County_monthly=aggregate(data=covidMA,
           cbind(cases,deaths)~yearMonth+ County,sum)
 
 
-covidMA_County_monthly_long=reshape2::melt(covidMA_County_monthly,
-                                    variable.name = 'type',
-                              value.name = 'value',
-                              id.vars=c('yearMonth','County'))
-
-head(covidMA_County_monthly_long,20)
+head(covidMA_County_monthly)
 ```
 
 
 First plot (only deaths):
 
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
 
-base=ggplot(covidMA_County_monthly_long[covidMA_County_monthly_long$type=='deaths',],
-            aes(x=yearMonth,
-                y=value)) + theme_light()
+
+```{r, eval=TRUE, warning=FALSE, message=FALSE}
+base=ggplot(data=covidMA_County_monthly,aes(x=yearMonth,
+                y=deaths)) + theme_light()
 monthly= base  + geom_line(alpha=0.3)  + 
     theme(axis.text.x = element_text(angle = 90))
 
@@ -161,14 +158,64 @@ monthly = monthly + stat_smooth(color = "red",
                       method = "loess")
 monthly + facet_wrap(~County)
 ```
+Let's try to highlight severity by reordering and faceting in one row:
 
-Reordering grid:
-
-```{r, eval=TRUE, warning=FALSE, message=FALSE}
-monthly + facet_wrap(~reorder(County,-value)) + scale_y_log10(labels = scales::comma)
+```{r}
+monthly + facet_wrap(~reorder(County,-deaths),nrow = 1)
 ```
 
-We just reorganized the previous plot so that we highlight the most and least affected counties.
+Are we really highlighting severity? Let's compute the rate of deaths by cases:
+
+
+```{r}
+rateDeathCases=covidMA_County_monthly$deaths/covidMA_County_monthly$cases
+covidMA_County_monthly$deaths_by100cases=100*rateDeathCases
+
+summary(covidMA_County_monthly$deaths_by100cases)
+
+```
+
+This summary is worth being shared and discussed, could be part of annotations, or some table or comment somewhere else **outside** the visual:
+
+* The divisions by zero:
+```{r}
+covidMA_County_monthly[is.infinite(covidMA_County_monthly$deaths_by100cases),]
+```
+
+* The non numerical results:
+
+```{r}
+covidMA_County_monthly[is.nan(covidMA_County_monthly$deaths_by100cases),]
+```
+
+* The zero deaths:
+```{r}
+covidMA_County_monthly[covidMA_County_monthly$deaths_by100cases==0 &
+                            !is.nan(covidMA_County_monthly$deaths_by100cases)   ,]
+```
+
+For the plot, we need the full data with none of the cases above, keeping in mind that we might use semilog axes:
+```{r}
+covidMA_County_monthly_Full=covidMA_County_monthly[!is.nan(covidMA_County_monthly$deaths_by100cases) &
+                           !is.infinite(covidMA_County_monthly$deaths_by100cases) &
+                        covidMA_County_monthly$deaths_by100cases>0,]
+```
+
+
+Let's see what is revealed:
+
+```{r}
+base=ggplot(data=covidMA_County_monthly_Full,aes(x=yearMonth,
+                y=deaths_by100cases)) + theme_light()
+monthly= base  + stat_smooth(color = "black",
+                      fill = "yellow",formula=y~x,
+                      method = "loess")
+monthly + facet_wrap(~reorder(County,-deaths_by100cases),nrow = 1) + 
+    theme(axis.text.x = element_text(angle = 90))
+```
+
+
+
 
 So far, lines have been used to report counts. We can also analyze the distribution of the counts using density plots. I mean:
 
@@ -325,7 +372,7 @@ scat1
 ```
 
 
-Let's highlight clustering around some values:
+Let's highlight clustering around some values using hexagonal bins (install [hexbin](https://cran.r-project.org/web/packages/hexbin/index.html)):
 
 ```{r hexbins, eval=TRUE, warning=FALSE, message=FALSE}
 scatp2 = base +  geom_hex(bins = 10)

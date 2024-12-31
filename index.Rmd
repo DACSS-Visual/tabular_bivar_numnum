@@ -48,7 +48,7 @@ saveRDS(object = covidMA,file = "data/covidMA.rds")
 
 
 
-Let's  use these [Covid data set](https://www.mass.gov/info-details/archive-of-covid-19-cases-2020-2021) from Massachusetts (previously pre-processed for this session):
+Let's  use these [Covid data set](https://www.mass.gov/info-details/archive-of-covid-19-cases-2020-2021) from Massachusetts (previously pre-processed):
 
 ```{r collect, eval=TRUE, warning=FALSE, message=FALSE}
 rm(list = ls())
@@ -67,7 +67,7 @@ str(covidMA)
 
 <a id='part1'></a>
 
-## Numeric-Time data
+## Numeric & Date
 
 I have a date variable in this data set:
 
@@ -122,7 +122,7 @@ covidLines= covidLines + scale_x_date(limits = c(min, max), #subset?
 covidLines 
 ```
 
-Alternatively:
+Alternatively, a **logged axis** allow you to see hidden distributions:
 
 ```{r}
 covidLines  + scale_y_log10(labels = scales::comma)
@@ -158,6 +158,7 @@ monthly = monthly + stat_smooth(color = "red",
                       method = "loess")
 monthly + facet_wrap(~County)
 ```
+
 Let's try to highlight severity by reordering and faceting in one row:
 
 ```{r}
@@ -333,16 +334,22 @@ ________
 
 
 
-## Numeric-Numeric data
+## Numeric & Numeric data
 
 The study of bivariate relationships among numerical variables is known as correlation analysis. The data we have been using has few numerical columns, but I will produce two by aggregating the original data by county:
 
 * Aggregating days to report and neighborhood:
 ```{r aggregate, eval=TRUE, warning=FALSE, message=FALSE}
-covidMA_county=aggregate(data=covidMA,cbind(deaths,cases)~County,sum)
+covidMA_county=aggregate(data=covidMA,cbind(deaths,cases)~County,mean)
 
 # you have:
-head(covidMA_county)
+covidMA_county
+```
+Remember that Dukes and Nantucket had few cases and deaths:
+
+```{r}
+# then
+covidMA_county=covidMA_county[covidMA_county$deaths>0 & covidMA_county$cases>0,]
 ```
 
 
@@ -367,49 +374,62 @@ Let's use **ggrepel** to show county names:
 
 ```{r ggscatter, eval=TRUE, warning=FALSE, message=FALSE}
 library(ggrepel)
-scat1=scat1 + geom_text_repel(aes(label=County),size=2)
-scat1
+scat2=scat1 + geom_text_repel(aes(label=County),size=2)
+scat2
 ```
 
 
-Let's highlight clustering around some values using hexagonal bins (install [hexbin](https://cran.r-project.org/web/packages/hexbin/index.html)):
+Let's highlight counts of counties around some values using hexagonal bins (install [hexbin](https://cran.r-project.org/web/packages/hexbin/index.html)):
+
+```{r}
+base +  geom_hex(bins = 10)
+```
+Adding text:
 
 ```{r hexbins, eval=TRUE, warning=FALSE, message=FALSE}
-scatp2 = base +  geom_hex(bins = 10)
+scath = base +  geom_hex(bins = 10)
 
-scatp2 = scatp2 + scale_fill_distiller(palette ="Greys",direction=1)
-
-scatp2 + geom_text_repel(aes(label=County))
+scath = scath + scale_fill_distiller(palette ="Greys",direction=1) +
+        geom_text_repel(aes(label=County))
+scath
 ```
 
-Using the same palette as before, we can try a different plot (stat_density_2d):
+The previous plot may need more work. An alternative could be a density plot (stat_density_2d):
 
 ```{r density,eval=TRUE, warning=FALSE, message=FALSE}
 base = ggplot(covidMA_county, aes(x=deaths,y=cases)) 
 
-scatp3 = base +  stat_density_2d(aes(fill = ..density..), 
+scatDens = base +  stat_density_2d(aes(fill = ..density..), 
                                  geom = "raster", contour = FALSE,show.legend = F)
 
-scatp3= scatp3 + scale_fill_distiller(palette="Greys", direction=1) 
-scatp3 
+scatDens= scatDens + scale_fill_distiller(palette="Greys", direction=1) 
+scatDens 
 ```
-
-Let's add text and make the unneeded space dissappear:
+Notice that you still see the grid.Let's add text and make the unneeded grid space:
 
 ```{r}
-scatp3 = scatp3 + geom_text_repel(aes(label=County),color='white',fontface='bold',bg.color = "black",bg.r = .15) + 
+scatDens1 = scatDens + geom_text_repel(aes(label=County),color='white',fontface='bold',bg.color = "black",bg.r = .15) + 
     scale_y_continuous(expand = c(0, 0)) + 
     scale_x_continuous(expand = c(0, 0)) 
-scatp3
+scatDens1
+```
+Notice that some counties had cases below 100, and the rest above 100 but below 1000. The deaths cases averages were around values below 10. Then, what about highlighting that:
+
+```{r}
+scatDens1 = scatDens + geom_text_repel(aes(label=County),color='white',fontface='bold',bg.color = "black",bg.r = .15) + 
+    scale_y_continuous(expand = c(0, 0), transform = 'log10') + 
+    scale_x_continuous(expand = c(0, 0)) 
+scatDens1
 ```
 
 
 Finishing...
+
 ```{r, eval=TRUE, warning=FALSE, message=FALSE, fig.width=8, fig.height=8}
 
 # texts for labs
-titleText="Covid severity in MA Counties"
-sub_titleText="Cases and deaths from 2020 to 2021"
+titleText="Middlesex gave a good fight"
+sub_titleText="Cases and deaths from 2020 to 2021 from MA Counties"
 captionText="Source: MA - Covid19 Dashboard \nWebsite:https://www.mass.gov/info-details/covid-19-reporting"
 yText="Infected"
 xText="Deaths"
@@ -417,15 +437,19 @@ colorLegendText=""
 
 #####
 
-scatp3 + labs(title = titleText,
+scatDens1 + labs(title = titleText,
          subtitle = sub_titleText,
          caption = captionText,
          y=yText,
          x=xText,
-         color=colorLegendText) + theme(plot.caption = element_text(hjust = 0)) + geom_segment(aes(x = 100, y = 100000, xend = 600, yend = 150000), arrow = arrow(type = 'closed'),size=2) +
-
-annotate("text", x=300,y=130000, label = "more severe situation", color = "red", 
-         angle = 45, hjust = 0.6, size = 4, fontface = "bold") 
+         color=colorLegendText) + theme(plot.caption = element_text(hjust = 0)) +
+         geom_curve(aes(x = 2, y = 30, xend = 4, yend = 200), 
+                      arrow = arrow(type = 'closed'),
+                    size=2,
+                    color='red',
+                    curvature = -0.2) +
+         annotate("text", x=3.5,y=90, label = "Increase in variability of cases",
+                  color = "red",angle = 45, hjust = 0.6, size = 4, fontface = "bold") 
 
 
 ```
@@ -439,7 +463,21 @@ ___________
 <a id='part3'></a>
 
 
-## LAB for THURSDAY: 
+## Deliverable II (option 3)
 
-Bring your data on Thursday, and let's see if you have a couple of interesting numerical variables to plot (or a way to build them).
+Let me upload this file with information about Covid in the world:
+```{r}
+linkCovid="https://github.com/DACSS-Visual/tabular_bivar_numnum/raw/refs/heads/main/data/covid-19-cases-deaths-per-million-people.csv"
+
+#see it
+covidWorld=read.csv(linkCovid)
+str(covidWorld)
+```
+
+Use the information on cases and deaths to produce a viz.
+
+_____
+
+[Go to table of contents.](#TOC)
+
 
